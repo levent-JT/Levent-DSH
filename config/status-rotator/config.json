@@ -1,0 +1,44 @@
+{
+    "config": {
+        "whaleTail": true,
+        "whaleTailMotion": {
+            "enabled": true,
+            "tpsMaxSpeed": 1.5
+        },
+        "danmaku": {
+            "enabled": false,
+            "fixed": {
+                "reserveBands": true,
+                "anchorBottomToHost": true
+            }
+        }
+    },
+    "packs": [
+        {
+            "id": "reverse-proxy",
+            "phrases": {
+                "zh": {
+                    "thinking": []
+                }
+            }
+        }
+    ],
+    "schedule": [],
+    "enabledPacks": [
+        "reverse-proxy",
+        "deepseek",
+        "western-ai",
+        "china-ai",
+        "coding",
+        "sysadmin",
+        "math-physics",
+        "slacking",
+        "internet-memes",
+        "daily",
+        "community",
+        "star-ask",
+        "star-route"
+    ],
+    "settingsVersion": 3,
+    "configMirrorHash": "df261e77039895d18c9c5088fe5ea059"
+}

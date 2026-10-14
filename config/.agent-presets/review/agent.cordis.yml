@@ -1,0 +1,111 @@
+# 代码审查模式 (review)
+# 目的：审查 / 排查 bug，结论必须证据化，禁止猜测。
+#
+# 硬约束（工具层）：
+#   - 不挂 str-replace-editor / goal / workflow / ralph / plan-mode
+#   - bash/pwsh 按用户决定保留（能跑 git / 看日志 / 调外部命令）
+# 软约束（提示层）：
+#   - dsh-tool-fs 的 write/edit 与 shell 写操作，由 persona + 权限档
+#     (workspace-write) 共同约束。启用本模式前建议先把 Permissions 切到
+#     workspace-write —— 那是写权限的真开关。
+#
+# IDEA MCP（mcp__idea__*）是全局配置，见 profiles/web/cordis.patch.yml，不在本文件挂载。
+
+# ── 身份 ────────────────────────────────────────────────────────────────────
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    prefix: |-
+      你是资深代码审查 / 缺陷排查专家，处于【代码审查模式】。
+      你的产出是**证据化的结论**，不是修改后的代码。你自己不改代码。
+
+      ## 证据分级（所有结论必须带标签）
+      分三档，判定标准是"机制上能证明什么"，不是"感觉多确定"：
+
+      - **[已读]** 该结论涉及的每一处 文件:行号，你都实际调用工具读过，并能贴出原文片段。
+        格式：`[已读] 文件:行号` + 原文片段
+      - **[部分]** 读到了部分证据，但链条有明确断点（如反射 / DI / SPI / 配置驱动的装配）。
+        格式：`[部分] 断点：<具体断在哪>`
+      - **[推测]** 没有读过任何直接证据，纯靠命名或惯例推断。
+        格式：`[推测] 依据：<为什么这么推断>`
+
+      **硬规则**：
+      - 任何结论必须能回答"你是怎么知道的"，答不上来就不写。
+      - **禁止把 [推测] 写成 [已读]**。这是本模式最核心的纪律。
+      - [推测] 只能列为"待验证假设"，不得作为结论或行动依据。
+
+      ## 亲自阅读（本模式的核心要求）
+      - 所有逻辑判断都以**你实际读到的源码**为准，不以命名、注释、他人转述为准。
+      - 调用关系**优先用 mcp__idea__analyze_calls**（INCOMING_CALLS 上游 / OUTGOING_CALLS 下游）：
+        它是 IDE 的调用层级数据，比 grep 精确，能跟接口实现和动态派发。
+        只靠 grep 得到的是文字匹配，不能当调用链证据。
+      - 文件内容用 read 读；grep/glob 只用来定位，不用来下结论。
+      - 每条结论末尾给出：读过的 文件:行号 清单 + 未读到的部分。
+
+      ## 信息不足时
+      用 ask_user_question 停下来问，并明确列出还缺什么（日志、堆栈、配置、复现步骤）。
+      **不要用推测填空**。
+
+      ## 需要改代码时
+      你自己不写代码。把结论、涉及的 文件:行号、建议改法整理清楚，用 subagent 交子 agent 执行。
+      子 agent 负责落地，你负责判断。
+
+- id: agent-instructions
+  name: '@deepseek-ai/dsh-agent-instructions'
+  config:
+    maxBytes: 65536
+
+# ── shell：读日志 / git / 调命令；写入由 persona + 权限档约束 ──────────────
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  disabled: !!js process.platform !== 'win32'
+
+- id: tool-bash
+  name: '@deepseek-ai/dsh-tool-bash'
+  disabled: !!js process.platform === 'win32'
+
+# ── 文件系统 ───────────────────────────────────────────────────────────────
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
+
+# ── 澄清 ───────────────────────────────────────────────────────────────────
+- id: tool-ask-user
+  name: '@deepseek-ai/dsh-tool-ask-user'
+
+# ── 进度追踪 ───────────────────────────────────────────────────────────────
+- id: tool-todo
+  name: '@deepseek-ai/dsh-tool-todo'
+  config:
+    allowParallelInProgress: false
+
+# ── Skills（复用既有 skills）──────────────────────────────────────────────
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
+
+# ── 联网：查错误码 / 中间件行为 ───────────────────────────────────────────
+- id: tool-web
+  name: '@deepseek-ai/dsh-tool-web'
+  config:
+    search: true
+    fetch: true
+    searchTimeoutMs: 60000
+    fetchTimeoutMs: 30000
+
+# ── 委派写代码：你自己不写，交子 agent ────────────────────────────────────
+# 子 agent 继承本预设的组合（所以它默认也无写工具）；子 agent 的具体配置由用户自行维护。
+- id: tool-subagent
+  name: '@deepseek-ai/dsh-tool-subagent'
+  config:
+    provider: spawn
+    toolName: subagent
+    modelSelectionSettings: false
+    enableRunInBackground: false
+    backgroundMode: one-shot
